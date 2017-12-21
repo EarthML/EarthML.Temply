@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "EarthML.Temply.ParseWordDocumentSample": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Users\\pks\\Downloads\\WildlifeRecordingTemplate.docx"
+    }
+  }
+}

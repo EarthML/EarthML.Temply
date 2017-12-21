@@ -12,6 +12,7 @@ namespace EarthML.Temply.Core
     {
         public string TagName { get; set; }       
         public string Format { get; set; }
+
     }
     public class TemplateImageReplacement : TemplateReplacement
     {
@@ -20,12 +21,31 @@ namespace EarthML.Temply.Core
         public int PxHeight { get; set; }
     }
 
+    public interface IProcessorProvider
+    {
+        string Name { get; }
+
+        Task UpdateElement(MainDocumentPart mainPart, SdtElement element, TemplateReplacement tag);
+    }
+    public class BaseProcessorProvider : IProcessorProvider
+    {
+        public string Name { get; set; }
+
+        public virtual async Task UpdateElement(MainDocumentPart mainPart, SdtElement element, TemplateReplacement tag)
+        {
+             
+
+        }
+    }
     public class Processor
     {
         public List<TemplateReplacement> Metadata = new List<TemplateReplacement>();
 
+        public List<IProcessorProvider> Providers = new List<IProcessorProvider>();
+
         public async Task ProcessElements(MainDocumentPart mainPart, IEnumerable<SdtElement> elements)
         {
+            var providers = Providers.ToLookup(k => k.Name.ToLower());
             foreach (SdtElement sdt in elements)
             {
                 var tag = sdt.SdtProperties.GetFirstChild<Tag>()?.Val;
@@ -90,9 +110,13 @@ namespace EarthML.Temply.Core
                         Metadata.Add(new TemplateReplacement { TagName = tagname, Format = format});
                     }
 
+                    Console.WriteLine(tagname);
+                    foreach(var provider in providers[tagname.Split(':').First().ToLower()]?? Enumerable.Empty<IProcessorProvider>())
+                    {
+                        await provider.UpdateElement(mainPart, sdt, Metadata.Last());
+                    }
 
-
-
+                   
 
                   
                 }
@@ -100,14 +124,14 @@ namespace EarthML.Temply.Core
 
 
         }
-
+        public MemoryStream stream { get; set; }
         public async Task ProcessDocument(byte[] data)
         {
-            var stream = new MemoryStream(data);
+            stream = new MemoryStream(data);
             using (WordprocessingDocument wdDoc = WordprocessingDocument.Open(stream, true))
             {
                 MainDocumentPart mainPart = wdDoc.MainDocumentPart;
-
+               
 
                 foreach (var header in mainPart.HeaderParts)
                 {
