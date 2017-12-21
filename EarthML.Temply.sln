@@ -11,6 +11,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{AF71
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EarthML.Temply.ParseWordDocumentSample", "samples\EarthML.Temply.ParseWordDocumentSample\EarthML.Temply.ParseWordDocumentSample.csproj", "{1A0D55C9-A98F-4799-8434-DED156DC51EB}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "data", "data", "{A7C483B2-8B0E-4CEC-AAE0-4CA9BA342AB7}"
+	ProjectSection(SolutionItems) = preProject
+		data\Hello-Im-Awesome.jpg = data\Hello-Im-Awesome.jpg
+		data\MyTemplate.docx = data\MyTemplate.docx
+		data\MyTemplate.updated.docx = data\MyTemplate.updated.docx
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

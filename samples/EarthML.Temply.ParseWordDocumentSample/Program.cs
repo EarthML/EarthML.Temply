@@ -12,6 +12,27 @@ using System.Threading.Tasks;
 namespace EarthML.Temply.ParseWordDocumentSample
 {
     
+    public class MyProvider : BaseProcessorProvider
+    {
+        public MyProvider()
+        {
+            Name = nameof(MyProvider);
+        }
+        public override Task UpdateElement(MainDocumentPart mainPart, SdtElement element, TemplateReplacement tag)
+        {
+            if (tag is TemplateImageReplacement image)
+            {    
+                mainPart.UpdateImageFromPath(element, "../../data/Hello-Im-Awesome.jpg");
+            }
+            else
+            {
+                element.Descendants<Text>().First().Text = "Hello World";
+                element.Descendants<Text>().Skip(1).ToList().ForEach(t => t.Remove());
+            }
+
+            return base.UpdateElement(mainPart, element, tag);
+        }
+    }
 
 
     class Program
@@ -21,7 +42,8 @@ namespace EarthML.Temply.ParseWordDocumentSample
         {
             
             var p = new Processor();
-           
+            p.Providers.Add(new MyProvider());
+             
 
             using (var fs = new FileStream(args[0], FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {

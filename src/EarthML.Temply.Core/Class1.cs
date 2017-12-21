@@ -168,4 +168,36 @@ namespace EarthML.Temply.Core
 
         }
     }
+
+    public static class Extensions
+    {
+        public static void UpdateImageFromPath(this MainDocumentPart mainPart, SdtElement element, string imgPath)
+        {
+
+            var picture = element.Descendants<SdtContentPicture>().FirstOrDefault();
+
+            if (picture != null)
+            {
+                var dr = element.Descendants<Drawing>().FirstOrDefault();
+                if (dr != null)
+                {
+                    var blip = dr.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
+                    if (blip != null)
+                    {
+                        var embed = blip.Embed;
+                        if (embed != null)
+                        {
+                            IdPartPair idpp = mainPart.Parts
+                                .Where(pa => pa.RelationshipId == embed).FirstOrDefault();
+
+                            ImagePart ip = (ImagePart)idpp.OpenXmlPart;
+
+                            using (FileStream fileStream = File.Open(imgPath, FileMode.Open))
+                                ip.FeedData(fileStream);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
