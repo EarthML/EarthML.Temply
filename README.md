@@ -56,3 +56,35 @@ using the following demo provider
     }
 ```
 the sample will replace the text templates with hellow world and image template parts with a Im-Awesome image.
+
+```
+    class Program
+    {
+      
+        static async Task Main(string[] args)
+        {
+            
+            var p = new Processor();
+            p.Providers.Add(new MyProvider());
+             
+            //Allow to read a word file currently opened
+            using (var fs = new FileStream(args[0], FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                var bytes = new byte[fs.Length];
+                fs.Read(bytes, 0, (int)fs.Length);
+                await p.ProcessDocument(bytes);
+
+                await p.stream.FlushAsync();
+
+                Console.WriteLine(JToken.FromObject(p.Metadata));
+
+
+                File.WriteAllBytes(Path.ChangeExtension(args[0], ".updated.docx"),p.stream.ToArray());
+
+            }
+
+            
+
+        }
+    }
+```
