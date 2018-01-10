@@ -8,35 +8,6 @@ using System.Threading.Tasks;
 
 namespace EarthML.Temply.Core
 {
-    public class TemplateReplacement
-    {
-        public string TagName { get; set; }       
-        public string Format { get; set; }
-
-    }
-    public class TemplateImageReplacement : TemplateReplacement
-    {
-        public bool IsImage { get; set; }
-        public int PxWidth { get; set; }
-        public int PxHeight { get; set; }
-    }
-
-    public interface IProcessorProvider
-    {
-        string Name { get; }
-
-        Task UpdateElement(MainDocumentPart mainPart, SdtElement element, TemplateReplacement tag);
-    }
-    public class BaseProcessorProvider : IProcessorProvider
-    {
-        public string Name { get; set; }
-
-        public virtual async Task UpdateElement(MainDocumentPart mainPart, SdtElement element, TemplateReplacement tag)
-        {
-             
-
-        }
-    }
     public class Processor
     {
         public List<TemplateReplacement> Metadata = new List<TemplateReplacement>();
@@ -90,8 +61,8 @@ namespace EarthML.Temply.Core
 
                                         Drawing sdtImage = sdt.Descendants<Drawing>().First();
 
-                                        const int emusPerInch = 914400;
-                                        const int emusPerCm = 360000;
+                                        const double emusPerInch = 914400;
+                                        const double emusPerCm = 360000;
                                         //Resize picture placeholder
                                         
 
@@ -127,7 +98,14 @@ namespace EarthML.Temply.Core
         public MemoryStream stream { get; set; }
         public async Task ProcessDocument(byte[] data)
         {
-            stream = new MemoryStream(data);
+            
+            stream = new MemoryStream();
+            using(var copyFrom = new MemoryStream(data))
+            {
+                await copyFrom.CopyToAsync(stream);
+                stream.Seek(0, SeekOrigin.Begin);
+            }
+
             using (WordprocessingDocument wdDoc = WordprocessingDocument.Open(stream, true))
             {
                 MainDocumentPart mainPart = wdDoc.MainDocumentPart;
@@ -166,38 +144,6 @@ namespace EarthML.Temply.Core
 
             }
 
-        }
-    }
-
-    public static class Extensions
-    {
-        public static void UpdateImageFromPath(this MainDocumentPart mainPart, SdtElement element, string imgPath)
-        {
-
-            var picture = element.Descendants<SdtContentPicture>().FirstOrDefault();
-
-            if (picture != null)
-            {
-                var dr = element.Descendants<Drawing>().FirstOrDefault();
-                if (dr != null)
-                {
-                    var blip = dr.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
-                    if (blip != null)
-                    {
-                        var embed = blip.Embed;
-                        if (embed != null)
-                        {
-                            IdPartPair idpp = mainPart.Parts
-                                .Where(pa => pa.RelationshipId == embed).FirstOrDefault();
-
-                            ImagePart ip = (ImagePart)idpp.OpenXmlPart;
-
-                            using (FileStream fileStream = File.Open(imgPath, FileMode.Open))
-                                ip.FeedData(fileStream);
-                        }
-                    }
-                }
-            }
         }
     }
 }
