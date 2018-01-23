@@ -47,49 +47,36 @@ namespace EarthML.Temply.Core
                         var dr = sdt.Descendants<Drawing>().FirstOrDefault();
                         if (dr != null)
                         {
-                            var blip = dr.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
-                            if (blip != null)
+                            const double emusPerInch = 914400;
+                            const double emusPerCm = 360000;
+                            //Resize picture placeholder
+
+
+                            Metadata.Add(new TemplateImageReplacement
                             {
-                                var embed = blip.Embed;
-                                if (embed != null)
-                                {
-                                  
-                                    IdPartPair idpp = mainPart.Parts
-                                        .Where(pa => pa.RelationshipId == embed).FirstOrDefault();
-                                    if (idpp != null)
-                                    {
+                                TagName = tagname,
+                                Format = format,
+                                IsImage = true,
+                                PxHeight = (int)(dr.Inline.Extent.Cy / emusPerInch * 300),
+                                PxWidth = (int)(dr.Inline.Extent.Cx / emusPerInch * 300)
+                            });
 
-                                        Drawing sdtImage = sdt.Descendants<Drawing>().First();
-
-                                        const double emusPerInch = 914400;
-                                        const double emusPerCm = 360000;
-                                        //Resize picture placeholder
-                                        
-
-                                        Metadata.Add(new TemplateImageReplacement { TagName = tagname, Format = format, IsImage = true,
-                                            PxHeight = (int)( sdtImage.Inline.Extent.Cy / emusPerInch * 300 ),
-                                            PxWidth =(int)( sdtImage.Inline.Extent.Cx / emusPerInch * 300)
-                                        });
-
-                                    }
-                                }
-                            }
                         }
                     }
                     else
                     {
-                        Metadata.Add(new TemplateReplacement { TagName = tagname, Format = format});
+                        Metadata.Add(new TemplateReplacement { TagName = tagname, Format = format });
                     }
 
                     Console.WriteLine(tagname);
-                    foreach(var provider in providers[tagname.Split(':').First().ToLower()]?? Enumerable.Empty<IProcessorProvider>())
+                    foreach (var provider in providers[tagname.Split(':').First().ToLower()] ?? Enumerable.Empty<IProcessorProvider>())
                     {
                         await provider.UpdateElement(mainPart, sdt, Metadata.Last());
                     }
 
-                   
 
-                  
+
+
                 }
             }
 
@@ -98,9 +85,9 @@ namespace EarthML.Temply.Core
         public MemoryStream stream { get; set; }
         public async Task ProcessDocument(byte[] data)
         {
-            
+
             stream = new MemoryStream();
-            using(var copyFrom = new MemoryStream(data))
+            using (var copyFrom = new MemoryStream(data))
             {
                 await copyFrom.CopyToAsync(stream);
                 stream.Seek(0, SeekOrigin.Begin);
@@ -109,19 +96,19 @@ namespace EarthML.Temply.Core
             using (WordprocessingDocument wdDoc = WordprocessingDocument.Open(stream, true))
             {
                 MainDocumentPart mainPart = wdDoc.MainDocumentPart;
-               
+
 
                 foreach (var header in mainPart.HeaderParts)
                 {
-                    await ProcessElements(mainPart,header.RootElement.Descendants<SdtElement>());
+                    await ProcessElements(mainPart, header.RootElement.Descendants<SdtElement>());
                 }
 
                 foreach (var footer in mainPart.FooterParts)
                 {
-                    await ProcessElements(mainPart,footer.RootElement.Descendants<SdtElement>());
+                    await ProcessElements(mainPart, footer.RootElement.Descendants<SdtElement>());
                 }
 
-                await ProcessElements(mainPart,mainPart.Document.Body.Descendants<SdtElement>());
+                await ProcessElements(mainPart, mainPart.Document.Body.Descendants<SdtElement>());
 
                 var tags = Metadata.ToLookup(k => k.TagName);
                 foreach (var tag in tags)
@@ -141,6 +128,11 @@ namespace EarthML.Temply.Core
 
                     }
                 }
+                
+                wdDoc.Save();
+                wdDoc.Close();
+                stream.Flush();
+                
 
             }
 
