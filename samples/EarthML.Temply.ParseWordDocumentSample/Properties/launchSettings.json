@@ -2,7 +2,7 @@
   "profiles": {
     "EarthML.Temply.ParseWordDocumentSample": {
       "commandName": "Project",
-      "commandLineArgs": "../../data/MyTemplate.docx"
+      "commandLineArgs": "../../../../../data/MyTemplate.docx"
     }
   }
 }

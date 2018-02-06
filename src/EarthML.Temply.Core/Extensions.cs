@@ -6,12 +6,274 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
 using System.Linq;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using A = DocumentFormat.OpenXml.Drawing;
+using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
+using System.Collections.Generic;
 
 namespace EarthML.Temply.Core
 {
+    public class Size
+    {
+        public double width { get; set; }
+        public double height { get; set; }
+
+        public Size(int width, int height)
+        {
+            this.width = width;
+            this.height = height;
+        }
+    }
+    public static class ImageHelper
+    {
+        const string errorMessage = "Could not recognize image format.";
+
+        private static Dictionary<byte[], Func<BinaryReader, Size>> imageFormatDecoders = new Dictionary<byte[], Func<BinaryReader, Size>>()
+        {
+            { new byte[]{ 0x42, 0x4D }, DecodeBitmap},
+            { new byte[]{ 0x47, 0x49, 0x46, 0x38, 0x37, 0x61 }, DecodeGif },
+            { new byte[]{ 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 }, DecodeGif },
+            { new byte[]{ 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, DecodePng },
+            { new byte[]{ 0xff, 0xd8 }, DecodeJfif },
+        };
+
+        /// <summary>
+        /// Gets the dimensions of an image.
+        /// </summary>
+        /// <param name="path">The path of the image to get the dimensions of.</param>
+        /// <returns>The dimensions of the specified image.</returns>
+        /// <exception cref="ArgumentException">The image was of an unrecognized format.</exception>
+        public static Size GetDimensions(string path)
+        {
+            using (BinaryReader binaryReader = new BinaryReader(File.OpenRead(path)))
+            {
+                try
+                {
+                    return GetDimensions(binaryReader);
+                }
+                catch (ArgumentException e)
+                {
+                    if (e.Message.StartsWith(errorMessage))
+                    {
+                        throw new ArgumentException(errorMessage, "path", e);
+                    }
+                    else
+                    {
+                        throw e;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the dimensions of an image.
+        /// </summary>
+        /// <param name="path">The path of the image to get the dimensions of.</param>
+        /// <returns>The dimensions of the specified image.</returns>
+        /// <exception cref="ArgumentException">The image was of an unrecognized format.</exception>    
+        public static Size GetDimensions(BinaryReader binaryReader)
+        {
+            int maxMagicBytesLength = imageFormatDecoders.Keys.OrderByDescending(x => x.Length).First().Length;
+
+            byte[] magicBytes = new byte[maxMagicBytesLength];
+
+            for (int i = 0; i < maxMagicBytesLength; i += 1)
+            {
+                magicBytes[i] = binaryReader.ReadByte();
+
+                foreach (var kvPair in imageFormatDecoders)
+                {
+                    if (magicBytes.StartsWith(kvPair.Key))
+                    {
+                        return kvPair.Value(binaryReader);
+                    }
+                }
+            }
+
+            throw new ArgumentException(errorMessage, "binaryReader");
+        }
+
+        private static bool StartsWith(this byte[] thisBytes, byte[] thatBytes)
+        {
+            for (int i = 0; i < thatBytes.Length; i += 1)
+            {
+                if (thisBytes[i] != thatBytes[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static short ReadLittleEndianInt16(this BinaryReader binaryReader)
+        {
+            byte[] bytes = new byte[sizeof(short)];
+            for (int i = 0; i < sizeof(short); i += 1)
+            {
+                bytes[sizeof(short) - 1 - i] = binaryReader.ReadByte();
+            }
+            return BitConverter.ToInt16(bytes, 0);
+        }
+
+        private static int ReadLittleEndianInt32(this BinaryReader binaryReader)
+        {
+            byte[] bytes = new byte[sizeof(int)];
+            for (int i = 0; i < sizeof(int); i += 1)
+            {
+                bytes[sizeof(int) - 1 - i] = binaryReader.ReadByte();
+            }
+            return BitConverter.ToInt32(bytes, 0);
+        }
+
+        private static Size DecodeBitmap(BinaryReader binaryReader)
+        {
+            binaryReader.ReadBytes(16);
+            int width = binaryReader.ReadInt32();
+            int height = binaryReader.ReadInt32();
+            return new Size(width, height);
+        }
+
+        private static Size DecodeGif(BinaryReader binaryReader)
+        {
+            int width = binaryReader.ReadInt16();
+            int height = binaryReader.ReadInt16();
+            return new Size(width, height);
+        }
+
+        private static Size DecodePng(BinaryReader binaryReader)
+        {
+            binaryReader.ReadBytes(8);
+            int width = binaryReader.ReadLittleEndianInt32();
+            int height = binaryReader.ReadLittleEndianInt32();
+            return new Size(width, height);
+        }
+
+        private static Size DecodeJfif(BinaryReader binaryReader)
+        {
+            while (binaryReader.ReadByte() == 0xff)
+            {
+                byte marker = binaryReader.ReadByte();
+                short chunkLength = binaryReader.ReadLittleEndianInt16();
+
+                if (marker == 0xc0)
+                {
+                    binaryReader.ReadByte();
+
+                    int height = binaryReader.ReadLittleEndianInt16();
+                    int width = binaryReader.ReadLittleEndianInt16();
+                    return new Size(width, height);
+                }
+
+                binaryReader.ReadBytes(chunkLength - 2);
+            }
+
+            throw new ArgumentException(errorMessage);
+        }
+    }
+
     public static class Extensions
     {
-        public static void WriteJsonTable(this SdtElement element, string path)
+        public static void InsertAPicture(MainDocumentPart mainPart, string fileName, OpenXmlElement element, string width)
+        {
+
+
+            var size = ImageHelper.GetDimensions(fileName);
+
+
+            ImagePart imagePart = mainPart.AddImagePart(ImagePartType.Jpeg);
+
+            using (FileStream stream = new FileStream(fileName, FileMode.Open))
+            {
+                imagePart.FeedData(stream);
+            }
+
+            const double emusPerInch = 914400;
+            const double emusPerCm = 360000;
+            double widthInCm = double.Parse(width.Replace("cm", ""));
+            double cx = (widthInCm * emusPerCm);
+            double cy = cx / (size.width / size.height);
+
+            AddImageToBody(mainPart, mainPart.GetIdOfPart(imagePart), element, (long)cx, (long)cy);
+
+        }
+
+        private static void AddImageToBody(MainDocumentPart mainPart, string relationshipId, OpenXmlElement elementwrapper, long cx, long cy)
+        {
+
+            // Define the reference of the image.
+            var element =
+                 new Drawing(
+                     new DW.Inline(
+                         new DW.Extent() { Cx = cx, Cy = cy },
+                         new DW.EffectExtent()
+                         {
+                             LeftEdge = 0L,
+                             TopEdge = 0L,
+                             RightEdge = 0L,
+                             BottomEdge = 0L
+                         },
+                         new DW.DocProperties()
+                         {
+                             Id = (UInt32Value)1U,
+                             Name = "Picture 1"
+                         },
+                         new DW.NonVisualGraphicFrameDrawingProperties(
+                             new A.GraphicFrameLocks() { NoChangeAspect = true }),
+                         new A.Graphic(
+                             new A.GraphicData(
+                                 new PIC.Picture(
+                                     new PIC.NonVisualPictureProperties(
+                                         new PIC.NonVisualDrawingProperties()
+                                         {
+                                             Id = (UInt32Value)0U,
+                                             Name = "New Bitmap Image.jpg"
+                                         },
+                                         new PIC.NonVisualPictureDrawingProperties()),
+                                     new PIC.BlipFill(
+                                         new A.Blip(
+                                             new A.BlipExtensionList(
+                                                 new A.BlipExtension()
+                                                 {
+                                                     Uri =
+                                                        "{28A0092B-C50C-407E-A947-70E740481C1C}"
+                                                 })
+                                         )
+                                         {
+                                             Embed = relationshipId,
+                                             CompressionState =
+                                             A.BlipCompressionValues.Print
+                                         },
+                                         new A.Stretch(
+                                             new A.FillRectangle())),
+                                     new PIC.ShapeProperties(
+                                         new A.Transform2D(
+                                             new A.Offset() { X = 0L, Y = 0L },
+                                             new A.Extents() { Cx = cx, Cy = cy }),
+                                         new A.PresetGeometry(
+                                             new A.AdjustValueList()
+                                         )
+                                         { Preset = A.ShapeTypeValues.Rectangle }))
+                             )
+                             { Uri = "http://schemas.openxmlformats.org/drawingml/2006/picture" })
+                     )
+                     {
+                         DistanceFromTop = (UInt32Value)0U,
+                         DistanceFromBottom = (UInt32Value)0U,
+                         DistanceFromLeft = (UInt32Value)0U,
+                         DistanceFromRight = (UInt32Value)0U,
+                         EditId = "50D07946"
+                     });
+
+            elementwrapper.RemoveAllChildren();
+            elementwrapper.AppendChild(element);
+          
+          //  elementwrapper.AppendChild(new Paragraph(new Run(element)));
+            // Append the reference to body, the element should be in a Run.
+
+        }
+
+
+        public static void WriteJsonTable(this SdtElement element, string path, MainDocumentPart mainPart)
         {
             var tablejson = JObject.Parse(File.ReadAllText(path));
 
@@ -84,115 +346,35 @@ namespace EarthML.Temply.Core
                 TableRow tr = new TableRow();
                 foreach (var column in row)
                 {
+                    var run = new Run(new RunProperties(new Bold(), new Color() { Val = "#000000" }), new Text(column.ToString()));
 
-                    if (column.Type == JTokenType.Object)
-                    {
-                        var type = column.SelectToken("$.type").ToString();
-                        if (type == "image")
-                        {
-
-                            var imageElement =
-                            new Drawing(
-                                 new Inline(
-                                     new Extent() { Cx = 4605338, Cy = 3673658 },
-                                     new EffectExtent()
-                                     {
-                                         LeftEdge = 0L,
-                                         TopEdge = 0L,
-                                         RightEdge = 5080L,
-                                         BottomEdge = 3175L
-                                     },
-                                     new DocProperties()
-                                     {
-                                         Id = (UInt32Value)1U,
-                                         Name = "Picture 1"
-                                     },
-                                     new NonVisualGraphicFrameDrawingProperties(
-                                         new DocumentFormat.OpenXml.Drawing.GraphicFrameLocks() { NoChangeAspect = true }),
-                                     new DocumentFormat.OpenXml.Drawing.Graphic(
-                                         new DocumentFormat.OpenXml.Drawing.GraphicData(
-                                             new Picture(
-                                                 new DocumentFormat.OpenXml.Drawing.NonVisualPictureProperties(
-                                                     new DocumentFormat.OpenXml.Drawing.NonVisualDrawingProperties()
-                                                     {
-                                                         Id = (UInt32Value)0U,
-                                                         Name = "New Bitmap Image.jpg"
-                                                     },
-                                                     new DocumentFormat.OpenXml.Drawing.NonVisualPictureDrawingProperties()),
-                                                 new DocumentFormat.OpenXml.Drawing.BlipFill(
-                                                     new DocumentFormat.OpenXml.Drawing.Blip(
-                                                         new DocumentFormat.OpenXml.Drawing.BlipExtensionList(
-                                                             new DocumentFormat.OpenXml.Drawing.BlipExtension()
-                                                             {
-                                                                 Uri =
-                                                                    "{28A0092B-C50C-407E-A947-70E740481C1C}"
-                                                             })
-                                                     )
-                                                     {
-                                                         CompressionState =
-                                                         DocumentFormat.OpenXml.Drawing.BlipCompressionValues.Print
-                                                     },
-                                                     new DocumentFormat.OpenXml.Drawing.Stretch(
-                                                         new DocumentFormat.OpenXml.Drawing.FillRectangle())),
-                                                 new DocumentFormat.OpenXml.Drawing.ShapeProperties(
-                                                     new DocumentFormat.OpenXml.Drawing.Transform2D(
-                                                         new DocumentFormat.OpenXml.Drawing.Offset() { X = 0L, Y = 0L },
-                                                         new DocumentFormat.OpenXml.Drawing.Extents() { Cx = 4605338, Cy = 3673658L }),
-                                                     new DocumentFormat.OpenXml.Drawing.PresetGeometry(
-                                                         new DocumentFormat.OpenXml.Drawing.AdjustValueList()
-                                                     )
-                                                     { Preset = DocumentFormat.OpenXml.Drawing.ShapeTypeValues.Rectangle }))
-                                         )
-                                         { Uri = "http://schemas.openxmlformats.org/drawingml/2006/picture" })
-                                 )
-                                 {
-                                     DistanceFromTop = (UInt32Value)0U,
-                                     DistanceFromBottom = (UInt32Value)0U,
-                                     DistanceFromLeft = (UInt32Value)0U,
-                                     DistanceFromRight = (UInt32Value)0U,
-                                     EditId = "50D07946"
-                                 });
-
-                            var block = new SdtBlock(
-                                new SdtProperties(
-                                    new SdtContentPicture(),
-                                    new Tag { Val = column.SelectToken("$.tag").ToString() }
-                                ),
-                               new Paragraph(new Run(imageElement))
-                                    );
-                            // var tag = new TemplateReplacement { TagName = column.SelectToken("$.tag").ToString() };
-                            tr.Append(new TableCell(block));
-                          
-                        }
-                        else
-                        {
-                            var block = new SdtBlock(
-                            new SdtProperties(new Tag { Val = column.SelectToken("$.tag").ToString() }),
-                          new Paragraph(new ParagraphProperties(new Justification() { Val = JustificationValues.Center }),
-                    new Run(new RunProperties(new Bold(), new Color() { Val = "#000000" }), new Text(column.ToString())))
-                            );
-
-                            // var tag = new TemplateReplacement { TagName = column.SelectToken("$.tag").ToString() };
-                            tr.Append(new TableCell(block));
-                            //,
-                        }
-                    }
-                    else
+                    if (column is JObject columnObj && column.SelectToken("$.type").ToString() == "image")
                     {
 
 
-                        tr.Append(new TableCell(
-                            new TableCellProperties(
-                                 new Shading()
-                                 {
-                                     Color = "auto",
-                                     Fill = i % 2 == 0 ? "auto" : "#eeeeee",
-                                     Val = ShadingPatternValues.Clear
-                                 }),
-                            new Paragraph(new ParagraphProperties(new Justification() { Val = JustificationValues.Center }),
-                    new Run(new RunProperties(new Bold(), new Color() { Val = "#000000" }), new Text(column.ToString())))
-                            ));
+                      
+
+
+
+                        InsertAPicture(mainPart, column.SelectToken("$.path").ToString(), run, column.SelectToken("$.width").ToString());
+
+                    
+
+
                     }
+                    
+
+                    tr.Append(new TableCell(
+                          new TableCellProperties(
+                               new Shading()
+                               {
+                                   Color = "auto",
+                                   Fill = i % 2 == 0 ? "auto" : "#eeeeee",
+                                   Val = ShadingPatternValues.Clear
+                               }),
+                          new Paragraph(new ParagraphProperties(new Justification() { Val = JustificationValues.Center }), run
+                  )
+                          ));
                 }
                 i++;
                 table.Append(tr);
@@ -325,7 +507,7 @@ namespace EarthML.Temply.Core
 
             if (picture != null)
             {
-                
+
                 var dr = element.Descendants<Drawing>().FirstOrDefault();
                 if (dr != null)
                 {
@@ -335,7 +517,7 @@ namespace EarthML.Temply.Core
                         var embed = blip.Embed;
                         if (embed != null)
                         {
-                            
+
                             IdPartPair idpp = mainPart.Parts
                                 .Where(pa => pa.RelationshipId == embed).FirstOrDefault();
 
@@ -346,12 +528,16 @@ namespace EarthML.Temply.Core
                         }
                         else
                         {
-                           ImagePart imagePart = mainPart.AddImagePart(ImagePartType.Jpeg);
-                            mainPart.GetIdOfPart(imagePart);
-                            using (FileStream stream = new FileStream(imgPath, FileMode.Open))
+                            ImagePart imagePart = mainPart.AddImagePart(ImagePartType.Jpeg);
+                            blip.Embed = mainPart.GetIdOfPart(imagePart);
+                            System.IO.Stream data = new System.IO.MemoryStream(File.ReadAllBytes(imgPath));
+                            //  using (FileStream stream = new FileStream(imgPath, FileMode.Open))
                             {
-                                imagePart.FeedData(stream);
+                                imagePart.FeedData(data);
+                                data.Close();
                             }
+                            Console.WriteLine("test");
+
                             // element.InnerXml = "<w:rPr><w:noProof /></w:rPr><w:tag w:val=\"MyProvider:CoolImage\" /><w:id w:val=\"2083329445\" /><w:picture /></w:sdtPr><w:sdtEndPr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" /><w:sdtContent xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:p w:rsidR=\"00646939\" w:rsidP=\"00646939\" w:rsidRDefault=\"00646939\"><w:pPr><w:rPr><w:noProof /></w:rPr></w:pPr><w:r w:rsidRPr=\"00646939\"><w:rPr><w:noProof /></w:rPr><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" wp14:anchorId=\"40D5DA71\" wp14:editId=\"48213C65\" xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"><wp:extent cx=\"4605338\" cy=\"3673658\" /><wp:effectExtent l=\"0\" t=\"0\" r=\"5080\" b=\"3175\" /><wp:docPr id=\"2\" name=\"Picture 2\" /><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\" /></wp:cNvGraphicFramePr><a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:nvPicPr><pic:cNvPr id=\"1\" name=\"\" /><pic:cNvPicPr /></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rId6\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" /><a:stretch><a:fillRect /></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\" /><a:ext cx=\"4613233\" cy=\"3679955\" /></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst /></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:sdtContent>";
                             // Console.WriteLine(element.InnerXml);
                             // element.Parent.Remove();
@@ -362,7 +548,7 @@ namespace EarthML.Temply.Core
                     }
                 }
             }
-           
+
         }
     }
 }

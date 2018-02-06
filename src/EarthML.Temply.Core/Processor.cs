@@ -80,6 +80,8 @@ namespace EarthML.Temply.Core
                 }
             }
 
+          
+
 
         }
         public MemoryStream stream { get; set; }
@@ -128,12 +130,20 @@ namespace EarthML.Temply.Core
 
                     }
                 }
-                
+
+                foreach (var a in mainPart.ImageParts)
+                {
+                    Console.WriteLine(a.GetStream().Length);
+                    Console.WriteLine(a.ContentType);
+                }
+
+                wdDoc.MainDocumentPart.Document.Save();
+            
                 wdDoc.Save();
                 wdDoc.Close();
                 stream.Flush();
-                
 
+               
             }
 
         }

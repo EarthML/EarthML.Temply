@@ -10,6 +10,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
+
 namespace EarthML.Temply.ParseWordDocumentSample
 {
 
@@ -23,14 +24,16 @@ namespace EarthML.Temply.ParseWordDocumentSample
         {
             if (tag is TemplateImageReplacement image)
             {
-                mainPart.UpdateImageFromPath(element, "../../data/Hello-Im-Awesome.jpg");
+                mainPart.UpdateImageFromPath(element, "../../../../../data/Hello-Im-Awesome.jpg");
             }
             else
             {
                  
                 if (tag.TagName == $"{nameof(MyProvider)}:Table")
-                { 
-                    element.WriteJsonTable("tablejson.json"); 
+                {
+                    element.WriteJsonTable("../../../tablejson.json", mainPart); 
+
+                 //   InsertAPicture(mainPart, "../../../../../data/Hello-Im-Awesome.jpg",element);
 
                 }
                 else
@@ -43,7 +46,9 @@ namespace EarthML.Temply.ParseWordDocumentSample
             return base.UpdateElement(mainPart, element, tag);
         }
 
-    
+
+      
+
     }
 
 
